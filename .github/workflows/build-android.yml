@@ -65,8 +65,14 @@ jobs:
         run: |
           $sdk = "$env:ANDROID_SDK_ROOT"
           Write-Host "SDK 目录: $sdk"
-          & "$sdk\tools\bin\sdkmanager.bat" --licenses | Out-Null
-          & "$sdk\tools\bin\sdkmanager.bat" --install "platforms;android-${{ inputs.api_level }}" "build-tools;28.0.3" "ndk;${{ inputs.ndk_version }}"
+          # GitHub runner 的 sdkmanager 位于 cmdline-tools
+          $sdkmgr = "$sdk\cmdline-tools\latest\bin\sdkmanager.bat"
+          if (-not (Test-Path $sdkmgr)) {
+            $sdkmgr = (Get-ChildItem "$sdk\cmdline-tools\*\bin\sdkmanager.bat" | Select-Object -First 1).FullName
+          }
+          Write-Host "sdkmanager: $sdkmgr"
+          cmd /c "echo y| `"$sdkmgr`" --sdk_root=`"$sdk`" --licenses >NUL"
+          & $sdkmgr --sdk_root="$sdk" --install "platforms;android-${{ inputs.api_level }}" "build-tools;28.0.3" "ndk;${{ inputs.ndk_version }}"
           $ndk = "$sdk\ndk\${{ inputs.ndk_version }}"
           echo "ANDROID_NDK_HOME=$ndk" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "NDK_ROOT=$ndk" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
