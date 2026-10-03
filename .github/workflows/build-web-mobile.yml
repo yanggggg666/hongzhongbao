@@ -1,0 +1,44 @@
+name: 构建 Web(H5) 客户端（实验）
+
+# ⚠️ 实验性流水线：仅手动触发。
+# 使用前请确认：
+#   1. Cocos Creator 2.0.6 官方下载直链有效（官网历史版本页/Cocos Dashboard）
+#      直链经常变动，请先在浏览器验证 $CREATOR_URL 可下载
+#   2. 命令行构建需要 GUI 环境，windows-latest runner 可满足
+#   3. 构建配置（client/settings/builder.json）建议先在本地编辑器里配好一次并提交，
+#      CI 将沿用该配置（官方推荐做法）
+
+on:
+  workflow_dispatch:
+    inputs:
+      creator_url:
+        description: 'Cocos Creator 2.0.6 Windows 版 zip 下载直链'
+        required: true
+        type: string
+
+env:
+  CREATOR_URL: ${{ inputs.creator_url }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下载 Cocos Creator 2.0.6
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "$env:CREATOR_URL" -OutFile creator.zip
+          Expand-Archive creator.zip -DestinationPath C:\CocosCreator
+
+      - name: 命令行构建 web-mobile
+        shell: pwsh
+        run: |
+          & "C:\CocosCreator\CocosCreator.exe" --path "$PWD\client" --build "platform=web-mobile;debug=false"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-mobile
+          path: client/build/web-mobile/

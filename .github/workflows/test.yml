@@ -1,0 +1,29 @@
+name: 红中宝测试
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 算法单元测试（胡牌/听牌/癞子）
+        run: node tests/algorithm.test.js
+        working-directory: server
+
+      - name: 红中麻将服务端全链路集成测试（4 机器人对局）
+        run: node tests/hzmj_game.test.js
+        working-directory: server
+
+      - name: 单机模式无头仿真测试
+        run: node tests/localgame.test.js
+        working-directory: server

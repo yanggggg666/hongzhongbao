@@ -1,0 +1,13 @@
+# 只读参考源码（上游公开仓库，不入库）
+babykylin_scmj/
+xiyoufang_mahjong/
+
+# Cocos Creator 构建产物
+client/library/
+client/temp/
+client/build/
+client/local/
+
+# 系统/临时
+.DS_Store
+*.log
