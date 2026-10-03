@@ -1,0 +1,96 @@
+name: 构建 Android APK
+
+# 红中宝 Android 构建流水线（Cocos Creator 2.4.15，项目从 2.0.6 自动迁移）
+#
+# ⚠️ 前置条件（一次性，必须在仓库 Secrets 配置，见 docs/CI构建说明.md）：
+#   COCOS_PROFILE_B64 —— 已登录 Cocos 账号的编辑器用户档案（base64 压缩包）
+#   Cocos Creator 2.x 启动强制登录，CI 无法交互登录，需从已登录机器导出档案还原。
+#
+# 触发方式：Actions -> 构建 Android APK -> Run workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      ndk_version:
+        description: 'NDK 版本（sdkmanager 格式）'
+        required: true
+        default: '21.4.7075529'
+      api_level:
+        description: 'Android API Level'
+        required: true
+        default: '28'
+
+env:
+  CREATOR_URL: 'https://download.cocos.com/CocosCreator/v2.4.15/CocosCreator_v2.4.15_20250328_win.zip'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下载 Cocos Creator 2.4.15（约 680MB）
+        shell: pwsh
+        run: |
+          curl.exe -L --retry 3 -o creator.zip "$env:CREATOR_URL"
+          if ((Get-Item creator.zip).Length -lt 600MB) { Write-Error "下载不完整"; exit 1 }
+
+      - name: 解压 Cocos Creator
+        shell: pwsh
+        run: |
+          Expand-Archive creator.zip -DestinationPath C:\CocosCreator -Force
+          Get-ChildItem C:\CocosCreator | Select-Object -First 5
+
+      - name: 还原 Cocos 编辑器登录档案
+        shell: pwsh
+        run: |
+          if ("${{ secrets.COCOS_PROFILE_B64 }}" -eq "") {
+            Write-Host "未配置 COCOS_PROFILE_B64，尝试无档案运行（2.4 需登录，预计会失败）"
+          } else {
+            $bytes = [Convert]::FromBase64String("${{ secrets.COCOS_PROFILE_B64 }}")
+            [IO.File]::WriteAllBytes("$PWD\profile.zip", $bytes)
+            Expand-Archive profile.zip -DestinationPath "$env:USERPROFILE\.CocosCreator" -Force
+            Write-Host "档案已还原到 $env:USERPROFILE\.CocosCreator"
+          }
+
+      - name: 配置 JDK 8
+        shell: pwsh
+        run: |
+          echo "JAVA_HOME=$env:JAVA_HOME_8_X64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "已选 JDK: $env:JAVA_HOME_8_X64"
+
+      - name: 安装 Android SDK 组件与 NDK
+        shell: pwsh
+        run: |
+          $sdk = "$env:ANDROID_SDK_ROOT"
+          Write-Host "SDK 目录: $sdk"
+          & "$sdk\tools\bin\sdkmanager.bat" --licenses | Out-Null
+          & "$sdk\tools\bin\sdkmanager.bat" --install "platforms;android-${{ inputs.api_level }}" "build-tools;28.0.3" "ndk;${{ inputs.ndk_version }}"
+          $ndk = "$sdk\ndk\${{ inputs.ndk_version }}"
+          echo "ANDROID_NDK_HOME=$ndk" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "NDK_ROOT=$ndk" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "ANDROID_NDK_ROOT=$ndk" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: 命令行构建 Android
+        shell: pwsh
+        run: |
+          # 最长等待 45 分钟，防止登录弹窗等情况卡死
+          $proc = Start-Process -FilePath "C:\CocosCreator\CocosCreator.exe" `
+            -ArgumentList '--path', "`"$PWD\client`"", '--build', '"platform=android;debug=true;autoCompile=true;apiLevel=${{ inputs.api_level }};appABIs=[''armeabi-v7a'']"' `
+            -PassThru
+          $ok = $proc | Wait-Process -Timeout 2700 -ErrorAction SilentlyContinue
+          if (-not $?) {
+            Write-Host "构建超时(45分钟)，可能卡在登录窗口或环境弹窗"
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            exit 1
+          }
+          Write-Host "构建进程退出码: $($proc.ExitCode)"
+
+      - name: 查找并上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: hongzhongbao-apk
+          path: |
+            client/build/**/*.apk
+          if-no-files-found: error

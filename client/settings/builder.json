@@ -9,7 +9,7 @@
   },
   "appKey": "",
   "appSecret": "",
-  "encryptJs": true,
+  "encryptJs": false,
   "excludeScenes": [],
   "fb-instant-games": {},
   "includeAnySDK": false,
@@ -27,14 +27,14 @@
     "portrait": false,
     "upsideDown": false
   },
-  "packageName": "com.babykylin.qpgames",
+  "packageName": "org.hongzhongbao.mahjong",
   "privateKey": "",
   "qqplay": {
     "REMOTE_SERVER_ROOT": "",
     "orientation": "portrait"
   },
   "startScene": "7898c3aa-75db-4523-8b22-e60bf7d83784",
-  "title": "SCMJ",
+  "title": "红中宝",
   "webOrientation": "landscape",
   "wechatgame": {
     "REMOTE_SERVER_ROOT": "",
@@ -43,5 +43,9 @@
     "subContext": ""
   },
   "xxteaKey": "a56d41f1-8905-45",
-  "zipCompressJs": true
+  "zipCompressJs": true,
+  "appABIs": [
+    "armeabi-v7a"
+  ],
+  "apiLevel": "android-28"
 }
