@@ -17,8 +17,9 @@ on:
   workflow_dispatch:
     inputs:
       ngrok_authtoken:
-        description: 'ngrok authtoken（从 https://dashboard.ngrok.com/get-started/your-authtoken 复制）'
-        required: true
+        description: 'ngrok authtoken（可选；留空则只做截屏诊断）'
+        required: false
+        default: ''
       wait_minutes:
         description: '等待登录的最长时间（分钟）'
         required: true
@@ -53,7 +54,32 @@ jobs:
           echo "RDP_PASSWORD=$pwd" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "RDP 已开启"
 
+      - name: 启动 Cocos Creator（使其弹出首个窗口）
+        shell: pwsh
+        run: |
+          Start-Process -FilePath "C:\CocosCreator\CocosCreator.exe" -ArgumentList '--path "C:\CocosCreator" -nologin'
+          Start-Sleep -Seconds 120
+          Write-Host "编辑器已启动 2 分钟"
+
+      - name: 截屏（诊断首启窗口）
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+          $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+          $bmp.Save("$PWD\screen.png")
+          Write-Host "截屏已保存 ($($bounds.Width)x$($bounds.Height))"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshot
+          path: screen.png
+          if-no-files-found: ignore
+
       - name: 启动 ngrok TCP 隧道
+        if: inputs.ngrok_authtoken != ''
         shell: pwsh
         run: |
           curl.exe -L -sS -o ngrok.zip "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip"
@@ -62,6 +88,7 @@ jobs:
           Start-Sleep -Seconds 8
 
       - name: 打印 RDP 连接信息
+        if: inputs.ngrok_authtoken != ''
         shell: pwsh
         run: |
           $tunnels = (Invoke-RestMethod http://localhost:4040/api/tunnels).tunnels
@@ -80,6 +107,7 @@ jobs:
           Write-Host "==================================================="
 
       - name: 等待用户完成 Cocos 登录
+        if: inputs.ngrok_authtoken != ''
         shell: pwsh
         run: |
           $deadline = (Get-Date).AddMinutes([int]"${{ inputs.wait_minutes }}")
@@ -104,12 +132,14 @@ jobs:
           Start-Sleep -Seconds 5
 
       - name: 打包登录态档案并上传
+        if: inputs.ngrok_authtoken != ''
         shell: pwsh
         run: |
           Compress-Archive -Path "$env:USERPROFILE\.CocosCreator\*" -DestinationPath "$PWD\cocos-profile.zip" -Force
           Write-Host "档案大小: $((Get-Item cocos-profile.zip).Length) 字节"
 
       - uses: actions/upload-artifact@v4
+        if: inputs.ngrok_authtoken != ''
         with:
           name: cocos-profile
           path: cocos-profile.zip
