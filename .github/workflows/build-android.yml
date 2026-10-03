@@ -54,18 +54,14 @@ jobs:
             Write-Host "档案已还原到 $env:USERPROFILE\.CocosCreator"
           }
 
-      - name: 配置 JDK 8
+      - name: 安装 Android SDK 组件与 NDK（sdkmanager 需 Java 17）
         shell: pwsh
         run: |
-          echo "JAVA_HOME=$env:JAVA_HOME_8_X64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "已选 JDK: $env:JAVA_HOME_8_X64"
-
-      - name: 安装 Android SDK 组件与 NDK
-        shell: pwsh
-        run: |
+          # 新版 sdkmanager 要求 Java 17+（gradle 编译阶段才用 JDK 8，见后续步骤）
+          $env:JAVA_HOME = $env:JAVA_HOME_17_X64
+          $env:Path = "$env:JAVA_HOME\bin;$env:Path"
           $sdk = "$env:ANDROID_SDK_ROOT"
           Write-Host "SDK 目录: $sdk"
-          # GitHub runner 的 sdkmanager 位于 cmdline-tools
           $sdkmgr = "$sdk\cmdline-tools\latest\bin\sdkmanager.bat"
           if (-not (Test-Path $sdkmgr)) {
             $sdkmgr = (Get-ChildItem "$sdk\cmdline-tools\*\bin\sdkmanager.bat" | Select-Object -First 1).FullName
@@ -73,21 +69,47 @@ jobs:
           Write-Host "sdkmanager: $sdkmgr"
           cmd /c "echo y| `"$sdkmgr`" --sdk_root=`"$sdk`" --licenses >NUL"
           & $sdkmgr --sdk_root="$sdk" --install "platforms;android-${{ inputs.api_level }}" "build-tools;28.0.3" "ndk;${{ inputs.ndk_version }}"
+          if ($LASTEXITCODE -ne 0) { Write-Error "sdkmanager install failed: $LASTEXITCODE" }
           $ndk = "$sdk\ndk\${{ inputs.ndk_version }}"
+          if (-not (Test-Path "$ndk\ndk-build.cmd")) { Write-Error "NDK 未安装成功: $ndk" }
           echo "ANDROID_NDK_HOME=$ndk" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "NDK_ROOT=$ndk" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "ANDROID_NDK_ROOT=$ndk" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: 命令行构建 Android
+      - name: 切回 JDK 8（gradle/AGP 3.x 编译需要）
         shell: pwsh
         run: |
-          # 最长等待 45 分钟，防止登录弹窗等情况卡死
+          echo "JAVA_HOME=$env:JAVA_HOME_8_X64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "已选 JDK: $env:JAVA_HOME_8_X64"
+
+      - name: 命令行构建 Android（实时输出编辑器日志）
+        shell: pwsh
+        run: |
+          $logDir = "$env:USERPROFILE\.CocosCreator\logs"
           $proc = Start-Process -FilePath "C:\CocosCreator\CocosCreator.exe" `
             -ArgumentList '--path', "`"$PWD\client`"", '--build', '"platform=android;debug=true;autoCompile=true;apiLevel=${{ inputs.api_level }};appABIs=[''armeabi-v7a'']"' `
             -PassThru
-          $ok = $proc | Wait-Process -Timeout 2700 -ErrorAction SilentlyContinue
-          if (-not $?) {
-            Write-Host "构建超时(45分钟)，可能卡在登录窗口或环境弹窗"
+          $deadline = (Get-Date).AddMinutes(25)
+          $lastSize = @{}
+          while (-not $proc.HasExited -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 30
+            # 输出编辑器日志增量，便于诊断卡点
+            if (Test-Path $logDir) {
+              Get-ChildItem "$logDir\*.log" -ErrorAction SilentlyContinue | ForEach-Object {
+                $size = (Get-Item $_.FullName).Length
+                $prev = $lastSize[$_.FullName]; if ($null -eq $prev) { $prev = 0 }
+                if ($size -gt $prev) {
+                  Write-Host "---- [$($_.Name) +$($size-$prev)B] ----"
+                  Get-Content $_.FullName -Tail 8 -ErrorAction SilentlyContinue
+                  $lastSize[$_.FullName] = $size
+                }
+              }
+            }
+            Write-Host ("[{0:HH:mm:ss}] 构建中... client\build 存在: {1}" -f (Get-Date), (Test-Path "$PWD\client\build"))
+          }
+          if (-not $proc.HasExited) {
+            Write-Host "构建超时(25分钟)，输出诊断信息："
+            Get-ChildItem "$env:USERPROFILE\.CocosCreator" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 20 FullName
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
             exit 1
           }
@@ -100,3 +122,12 @@ jobs:
           path: |
             client/build/**/*.apk
           if-no-files-found: error
+
+      - name: 失败时上传编辑器日志（诊断用）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: creator-logs
+          path: |
+            C:/Users/runneradmin/.CocosCreator/logs/*.log
+          if-no-files-found: ignore
