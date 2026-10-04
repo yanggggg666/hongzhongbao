@@ -73,50 +73,39 @@ jobs:
           path: screen.png
           if-no-files-found: ignore
 
-      - name: 启动 RDP 公网隧道（bore，免注册免信用卡）
+      - name: 启动 RDP 公网隧道并等待登录（bore，免注册免信用卡）
         shell: pwsh
         run: |
           curl.exe -L -sS -o bore.zip "https://github.com/ekzhang/bore/releases/download/v0.5.2/bore-v0.5.2-x86_64-pc-windows-msvc.zip"
           Expand-Archive bore.zip -DestinationPath C:\bore -Force
           $boreExe = Get-ChildItem "C:\bore\bore.exe" -Recurse | Select-Object -First 1 -ExpandProperty FullName
           if (-not $boreExe) { Write-Error "未找到 bore.exe"; exit 1 }
-          Start-Process -FilePath $boreExe -ArgumentList "local 3389 --to bore.pub" -WindowStyle Hidden -RedirectStandardOutput "$PWD\bore.log" -RedirectStandardError "$PWD\bore.err"
+          $boreProc = Start-Process -FilePath $boreExe -ArgumentList "local 3389 --to bore.pub" -PassThru -WindowStyle Hidden -RedirectStandardOutput "$PWD\bore.log" -RedirectStandardError "$PWD\bore.err"
           $addr = $null
           for ($i=0; $i -lt 30; $i++) {
             Start-Sleep -Seconds 2
             $c = (Get-Content "$PWD\bore.log" -Raw -ErrorAction SilentlyContinue) + (Get-Content "$PWD\bore.err" -Raw -ErrorAction SilentlyContinue)
             if ($c -match 'bore\.pub:(\d+)') { $addr = "bore.pub:$($Matches[1])"; break }
           }
-          Get-Content "$PWD\bore.log","$PWD\bore.err" -ErrorAction SilentlyContinue | Write-Host
-          if (-not $addr) { Write-Error "bore 隧道建立失败"; exit 1 }
-          echo "RDP_ADDR=$addr" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "隧道就绪: $addr"
-
-      - name: 打印 RDP 连接信息
-        shell: pwsh
-        run: |
-          $addr = $env:RDP_ADDR
+          if (-not $addr) {
+            Get-Content "$PWD\bore.log","$PWD\bore.err" -ErrorAction SilentlyContinue | Write-Host
+            Write-Error "bore 隧道建立失败"; exit 1
+          }
           Write-Host "==================================================="
           Write-Host "  RDP 连接信息（用手机/电脑的远程桌面客户端连接）"
-          Write-Host "  地址:   $addr  （去掉 tcp:// 前缀使用）"
+          Write-Host "  地址:   $addr"
           Write-Host "  用户名: runneradmin"
           Write-Host "  密码:   $env:RDP_PASSWORD"
           Write-Host "==================================================="
-          Write-Host "  连入后操作："
-          Write-Host "  1. 打开 C:\CocosCreator\CocosCreator.exe"
-          Write-Host "  2. 在登录窗口输入 Cocos 账号并登录"
-          Write-Host "  3. 看到编辑器主界面即完成，可关闭编辑器"
-          Write-Host "  （本任务最长等待 ${{ inputs.wait_minutes }} 分钟）"
-          Write-Host "==================================================="
-
-      - name: 等待用户完成 Cocos 登录
-        shell: pwsh
-        run: |
           $deadline = (Get-Date).AddMinutes([int]"${{ inputs.wait_minutes }}")
           $userJson = "$env:USERPROFILE\.CocosCreator\user.json"
           $ok = $false
           while ((Get-Date) -lt $deadline) {
             Start-Sleep -Seconds 20
+            if ($boreProc.HasExited) {
+              Write-Host "bore 进程已退出，打印日志："
+              Get-Content "$PWD\bore.log","$PWD\bore.err" -ErrorAction SilentlyContinue
+            }
             if (Test-Path $userJson) {
               $content = Get-Content $userJson -Raw -ErrorAction SilentlyContinue
               if ($content -and $content.Length -gt 50 -and ($content -match 'token|session|accessToken|uid')) {
@@ -128,10 +117,10 @@ jobs:
             Write-Host ("[{0:HH:mm:ss}] 等待登录中..." -f (Get-Date))
           }
           if (-not $ok) { Write-Error "超时未检测到登录态，请重新运行本流水线" }
-          # 等编辑器把状态写完整
           Start-Sleep -Seconds 30
           Get-Process CocosCreator -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
           Start-Sleep -Seconds 5
+          Stop-Process -Id $boreProc.Id -Force -ErrorAction SilentlyContinue
 
       - name: 打包登录态档案并上传
         shell: pwsh
