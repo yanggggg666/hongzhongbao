@@ -42,17 +42,28 @@ jobs:
           Expand-Archive creator.zip -DestinationPath C:\CocosCreator -Force
           Get-ChildItem C:\CocosCreator | Select-Object -First 5
 
-      - name: 还原 Cocos 编辑器登录档案
+      - name: 获取 Cocos 编辑器登录档案
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if ("${{ secrets.COCOS_PROFILE_B64 }}" -eq "") {
-            Write-Host "未配置 COCOS_PROFILE_B64，尝试无档案运行（2.4 需登录，预计会失败）"
-          } else {
+          # 优先：仓库 Secret COCOS_PROFILE_B64；否则：自动从「激活辅助」流水线最近一次成功运行下载 cocos-profile 产物
+          if ("${{ secrets.COCOS_PROFILE_B64 }}" -ne "") {
+            Write-Host "使用 COCOS_PROFILE_B64 secret"
             $bytes = [Convert]::FromBase64String("${{ secrets.COCOS_PROFILE_B64 }}")
             [IO.File]::WriteAllBytes("$PWD\profile.zip", $bytes)
-            Expand-Archive profile.zip -DestinationPath "$env:USERPROFILE\.CocosCreator" -Force
-            Write-Host "档案已还原到 $env:USERPROFILE\.CocosCreator"
+          } else {
+            Write-Host "未配 secret，尝试从 activation artifact 下载"
+            $runs = gh run list --workflow=setup-activation.yml --status=success --limit=5 --json databaseId,createdAt | ConvertFrom-Json
+            if (-not $runs) { Write-Error "找不到成功的「激活辅助」运行记录，请先跑一次（填 ngrok authtoken）"; exit 1 }
+            foreach ($r in $runs) {
+              gh run download $r.databaseId --name cocos-profile --dir "$PWD\pf" 2>$null
+              if (Test-Path "$PWD\pf\cocos-profile.zip") { Copy-Item "$PWD\pf\cocos-profile.zip" "$PWD\profile.zip"; break }
+            }
+            if (-not (Test-Path "$PWD\profile.zip")) { Write-Error "「激活辅助」产物中无 cocos-profile.zip（可能未填 ngrok token 跑过）"; exit 1 }
           }
+          Expand-Archive profile.zip -DestinationPath "$env:USERPROFILE\.CocosCreator" -Force
+          Write-Host "登录档案已还原到 $env:USERPROFILE\.CocosCreator"
 
       - name: 安装 Android SDK 组件与 NDK（sdkmanager 需 Java 17）
         shell: pwsh
@@ -89,8 +100,9 @@ jobs:
           $proc = Start-Process -FilePath "C:\CocosCreator\CocosCreator.exe" `
             -ArgumentList '--path', "`"$PWD\client`"", '--build', '"platform=android;debug=true;autoCompile=true;apiLevel=${{ inputs.api_level }};appABIs=[''armeabi-v7a'']"' `
             -PassThru
-          $deadline = (Get-Date).AddMinutes(25)
+          $deadline = (Get-Date).AddMinutes(45)
           $lastSize = @{}
+          $startTime = Get-Date
           while (-not $proc.HasExited -and (Get-Date) -lt $deadline) {
             Start-Sleep -Seconds 30
             # 输出编辑器日志增量，便于诊断卡点
@@ -106,9 +118,15 @@ jobs:
               }
             }
             Write-Host ("[{0:HH:mm:ss}] 构建中... client\build 存在: {1}" -f (Get-Date), (Test-Path "$PWD\client\build"))
+            # 卡死检测：启动 5 分钟后编辑器 logs 目录仍无任何日志 → 多半卡在登录窗口/崩溃，直接失败
+            if (((Get-Date) - $startTime).TotalMinutes -gt 5 -and ((Get-ChildItem "$logDir\*.log" -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0)) {
+              Write-Host "编辑器 5 分钟内未产生任何日志，判定启动卡死，终止构建"
+              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+              exit 1
+            }
           }
           if (-not $proc.HasExited) {
-            Write-Host "构建超时(25分钟)，输出诊断信息："
+            Write-Host "构建超时(45分钟)，输出诊断信息："
             Get-ChildItem "$env:USERPROFILE\.CocosCreator" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 20 FullName
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
             exit 1

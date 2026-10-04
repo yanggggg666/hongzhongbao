@@ -84,8 +84,23 @@ jobs:
         run: |
           curl.exe -L -sS -o ngrok.zip "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip"
           Expand-Archive ngrok.zip -DestinationPath C:\ngrok -Force
-          Start-Process -FilePath "C:\ngrok\ngrok.exe" -ArgumentList "tcp 3389 --authtoken=${{ inputs.ngrok_authtoken }} --log=stdout" -WindowStyle Hidden
-          Start-Sleep -Seconds 8
+          & C:\ngrok\ngrok.exe config add-authtoken ${{ inputs.ngrok_authtoken }}
+          Start-Process -FilePath "C:\ngrok\ngrok.exe" -ArgumentList "tcp 3389 --log=stdout" -WindowStyle Hidden -RedirectStandardOutput "$PWD\ngrok.log"
+          # 轮询等隧道就绪（最多 30 秒）
+          $ok = $false
+          foreach ($i in 1..15) {
+            Start-Sleep -Seconds 2
+            try {
+              $t = (Invoke-RestMethod http://localhost:4040/api/tunnels).tunnels
+              if ($t) { $ok = $true; break }
+            } catch {}
+          }
+          if (-not $ok) {
+            Write-Host "===== ngrok.log ====="
+            Get-Content "$PWD\ngrok.log" -ErrorAction SilentlyContinue -Tail 50
+            Write-Error "ngrok 未能启动隧道（authtoken 错误/账号未验证邮箱/被 ngrok 限流）"
+            exit 1
+          }
 
       - name: 打印 RDP 连接信息
         if: inputs.ngrok_authtoken != ''

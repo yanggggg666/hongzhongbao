@@ -14,23 +14,19 @@
 | 构建命令 | `CocosCreator.exe --path client --build "platform=android;debug=true;autoCompile=true"` | 官方命令行构建参数 |
 | 产物 | debug APK（单 ABI armeabi-v7a，包名 `org.hongzhongbao.mahjong`） | artifact 上传，可安装到手机 |
 
-## ⚠️ 唯一的前置手工步骤：配置 COCOS_PROFILE_B64
+## ⚠️ 一次性前置：配置 Cocos 登录态
 
-**Cocos Creator 2.x 启动时强制登录 Cocos 账号（在线激活）**，CI 中无法交互登录。
-解法：从一台已登录的 Windows 电脑导出编辑器档案，在 CI 中还原。
+**Cocos Creator 2.x 启动时强制登录 Cocos 账号（在线激活）**，CI 无法交互登录，需要一次性从激活流水线产出登录档案：
 
-1. 在任意 Windows 电脑安装 Cocos Creator 2.4.x（官网/Dashboard 下载），**打开并登录一次**（账号免费注册）后完全退出编辑器。
-2. 在该电脑 PowerShell 执行：
-   ```powershell
-   Compress-Archive -Path "$env:USERPROFILE\.CocosCreator\*" -DestinationPath profile.zip
-   [Convert]::ToBase64String([IO.File]::ReadAllBytes("profile.zip")) | Set-Clipboard
-   ```
-3. 打开仓库 GitHub 页面 → **Settings → Secrets and variables → Actions → New repository secret**：
-   - Name: `COCOS_PROFILE_B64`
-   - Value: 剪贴板内容（一大段 base64）
-4. 完成。之后每次 Run workflow 即可自动出包。
+1. 手机/电脑浏览器注册 ngrok 免费账号（https://dashboard.ngrok.com），复制 **Authtoken**
+2. GitHub 仓库 → **Actions → 激活辅助（一次性）→ Run workflow**，填入 authtoken，等待 2~4 分钟
+3. 日志中「打印 RDP 连接信息」会给出 地址/账号/密码（手机装「微软远程桌面」App 连接）
+4. 连入后打开 `C:\CocosCreator\CocosCreator.exe`，登录 Cocos 账号，看到编辑器主界面即完成
+5. 流水线检测到登录态后会自动打包，运行记录出现 `cocos-profile` 产物即成功
 
-> 若档案内的登录态过期（通常很久才失效），重复上述步骤更新 secret 即可。
+之后「构建 Android APK」会**自动**从激活流水线下载该产物，无需手工配置 secret（也可选：手动设 `COCOS_PROFILE_B64` 覆盖）。
+
+> 若登录态过期，重跑一次激活辅助即可。
 
 ## 替代方案：Self-hosted Runner（更省心，推荐有条件时使用）
 
