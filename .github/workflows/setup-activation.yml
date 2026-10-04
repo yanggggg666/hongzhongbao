@@ -106,14 +106,22 @@ jobs:
               Write-Host "bore 进程已退出，打印日志："
               Get-Content "$PWD\bore.log","$PWD\bore.err" -ErrorAction SilentlyContinue
             }
-            if (Test-Path $userJson) {
-              $content = Get-Content $userJson -Raw -ErrorAction SilentlyContinue
-              if ($content -and $content.Length -gt 50 -and ($content -match 'token|session|accessToken|uid')) {
-                $ok = $true
-                Write-Host "检测到登录态档案！"
-                break
+            # 宽松检测：.CocosCreator 或 AppData\Local\CocosCreator 下任意含 token 的 json，或 profiles 目录非空
+            $found = $false
+            foreach ($dir in @("$env:USERPROFILE\.CocosCreator", "$env:LOCALAPPDATA\CocosCreator")) {
+              if (Test-Path $dir) {
+                $hit = Get-ChildItem $dir -Recurse -Include *.json -ErrorAction SilentlyContinue | Where-Object { $_.Length -gt 30 } | Select-Object -First 3
+                foreach ($f in $hit) {
+                  $c = Get-Content $f.FullName -Raw -ErrorAction SilentlyContinue
+                  if ($c -and ($c -match 'token|session|accessToken|uid|"account"|email')) { $found = $true; Write-Host "检测到登录态: $($f.FullName)"; break }
+                }
+                if (-not $found) {
+                  if (Get-ChildItem "$dir\profiles" -ErrorAction SilentlyContinue) { $found = $true; Write-Host "检测到 profiles 目录" }
+                }
               }
+              if ($found) { break }
             }
+            if ($found) { $ok = $true; Write-Host "检测到登录态档案！"; break }
             Write-Host ("[{0:HH:mm:ss}] 等待登录中..." -f (Get-Date))
           }
           if (-not $ok) { Write-Error "超时未检测到登录态，请重新运行本流水线" }
