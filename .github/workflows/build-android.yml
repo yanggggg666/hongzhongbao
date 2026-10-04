@@ -121,14 +121,7 @@ jobs:
             # 自动点掉 Cocos 的「项目升级确认」弹窗：模拟鼠标点击「Confirm」
             try {
               if (-not ('Win32Click' -as [type])) {
-                Add-Type -TypeDefinition @"
-using System; using System.Runtime.InteropServices;
-public class Win32Click {
-  [DllImport("user32.dll",SetLastError=true)] public static extern bool SetCursorPos(int X,int Y);
-  [DllImport("user32.dll",SetLastError=true)] public static extern void mouse_event(int flags,int dx,int dy,int data,int extraInfo);
-  public static void Click(int x,int y){ SetCursorPos(x,y); mouse_event(0x02,0,0,0,0); mouse_event(0x04,0,0,0,0); }
-}
-"@
+                Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Win32Click { [DllImport("user32.dll",SetLastError=true)] public static extern bool SetCursorPos(int X,int Y); [DllImport("user32.dll",SetLastError=true)] public static extern void mouse_event(int flags,int dx,int dy,int data,int extraInfo); public static void Click(int x,int y){ SetCursorPos(x,y); mouse_event(0x02,0,0,0,0); mouse_event(0x04,0,0,0,0); } }'
               }
               [Win32Click]::Click(652,394)
               Write-Host "已模拟点击 Confirm"
