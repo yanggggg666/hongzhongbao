@@ -118,7 +118,7 @@ jobs:
               }
             }
             Write-Host ("[{0:HH:mm:ss}] 构建中... client\build 存在: {1}" -f (Get-Date), (Test-Path "$PWD\client\build"))
-            # 自动点掉 Cocos 的「项目升级确认」弹窗
+            # 自动点掉 Cocos 的「项目升级确认」弹窗：向弹窗窗口发 Enter
             try {
               Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
               $btn = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
@@ -128,6 +128,13 @@ jobs:
               if ($btn) {
                 $btn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
                 Write-Host "已自动点击「Confirm」(升级项目弹窗)"
+              } else {
+                $shell = New-Object -ComObject WScript.Shell
+                if ($shell.AppActivate('CocosCreator.exe')) {
+                  Start-Sleep -Milliseconds 500
+                  $shell.SendKeys('{ENTER}')
+                  Write-Host "已向 CocosCreator.exe 窗口发送 Enter"
+                }
               }
             } catch {}
             # 周期性截屏，用于诊断编辑器是否弹窗卡住
