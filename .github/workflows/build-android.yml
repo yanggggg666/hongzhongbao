@@ -118,7 +118,15 @@ jobs:
               }
             }
             Write-Host ("[{0:HH:mm:ss}] 构建中... client\build 存在: {1}" -f (Get-Date), (Test-Path "$PWD\client\build"))
-            # 自动点掉 Cocos 的「项目升级确认」弹窗：模拟鼠标点击「Confirm」
+            # 自动点掉 Cocos 的「项目升级确认」弹窗：BM_CLICK 直接给按钮发消息
+            try {
+              if (-not ('CocosClick' -as [type])) {
+                Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; using System.Text; public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam); public class CocosClick { [DllImport("user32.dll",SetLastError=true,CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string lpClassName, string lpWindowName); [DllImport("user32.dll",SetLastError=true)] public static extern bool EnumChildWindows(IntPtr hWndParent, EnumWindowsProc lpfnEnumProc, IntPtr lParam); [DllImport("user32.dll",SetLastError=true,CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount); [DllImport("user32.dll",SetLastError=true)] public static extern IntPtr SendMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam); static EnumWindowsProc _cb; public static void ClickConfirm(){ _cb = new EnumWindowsProc((hW, lp) => { var sb = new StringBuilder(256); GetWindowText(hW, sb, sb.Capacity); if (sb.ToString() == "Confirm") { SendMessage(hW, 0x00F5, IntPtr.Zero, IntPtr.Zero); return false; } return true; }); IntPtr hwnd = FindWindow(null, "CocosCreator.exe"); if (hwnd != IntPtr.Zero) EnumChildWindows(hwnd, _cb, IntPtr.Zero); } }'
+              }
+              [CocosClick]::ClickConfirm()
+              Write-Host "已发送 BM_CLICK Confirm"
+            } catch {}
+            # 再用坐标点击兜底
             try {
               if (-not ('Win32Click' -as [type])) {
                 Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Win32Click { [DllImport("user32.dll",SetLastError=true)] public static extern bool SetCursorPos(int X,int Y); [DllImport("user32.dll",SetLastError=true)] public static extern void mouse_event(int flags,int dx,int dy,int data,int extraInfo); public static void Click(int x,int y){ SetCursorPos(x,y); mouse_event(0x02,0,0,0,0); mouse_event(0x04,0,0,0,0); } }'
