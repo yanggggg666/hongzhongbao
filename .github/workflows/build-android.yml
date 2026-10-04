@@ -154,10 +154,17 @@ jobs:
 
       - name: 失败时上传编辑器日志与构建截屏（诊断用）
         if: failure()
+        shell: pwsh
+        run: |
+          $dest = "$PWD\ci-logs"
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          Copy-Item "C:/Users/runneradmin/.CocosCreator/logs/*" $dest -Force -ErrorAction SilentlyContinue
+          Copy-Item "$PWD\buildscreen_*.png" $dest -Force -ErrorAction SilentlyContinue
+          Write-Host (Get-ChildItem $dest | ForEach-Object Name)
+
+      - name: 归档诊断产物
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: creator-logs
-          path: |
-            C:/Users/runneradmin/.CocosCreator/logs/*.log
-            ${{ github.workspace }}/buildscreen_*.png
-          if-no-files-found: ignore
+          path: ci-logs/**
