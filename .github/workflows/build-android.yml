@@ -118,6 +118,18 @@ jobs:
               }
             }
             Write-Host ("[{0:HH:mm:ss}] 构建中... client\build 存在: {1}" -f (Get-Date), (Test-Path "$PWD\client\build"))
+            # 自动点掉 Cocos 的「项目升级确认」弹窗
+            try {
+              Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+              $btn = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+                [System.Windows.Automation.TreeScope]::Descendants,
+                (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,'Confirm'))
+              )
+              if ($btn) {
+                $btn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+                Write-Host "已自动点击「Confirm」(升级项目弹窗)"
+              }
+            } catch {}
             # 周期性截屏，用于诊断编辑器是否弹窗卡住
             try {
               Add-Type -AssemblyName System.Windows.Forms,System.Drawing
