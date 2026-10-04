@@ -118,6 +118,17 @@ jobs:
               }
             }
             Write-Host ("[{0:HH:mm:ss}] 构建中... client\build 存在: {1}" -f (Get-Date), (Test-Path "$PWD\client\build"))
+            # 周期性截屏，用于诊断编辑器是否弹窗卡住
+            try {
+              Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+              $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+              $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+              $g = [System.Drawing.Graphics]::FromImage($bmp)
+              $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+              $stamp = (Get-Date -Format 'HHmmss')
+              $bmp.Save("$PWD\buildscreen_$stamp.png")
+              $bmp.Dispose(); $g.Dispose()
+            } catch {}
             # 卡死检测：启动 5 分钟后编辑器 logs 目录仍无任何日志 → 多半卡在登录窗口/崩溃，直接失败
             if (((Get-Date) - $startTime).TotalMinutes -gt 5 -and ((Get-ChildItem "$logDir\*.log" -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0)) {
               Write-Host "编辑器 5 分钟内未产生任何日志，判定启动卡死，终止构建"
@@ -141,11 +152,12 @@ jobs:
             client/build/**/*.apk
           if-no-files-found: error
 
-      - name: 失败时上传编辑器日志（诊断用）
+      - name: 失败时上传编辑器日志与构建截屏（诊断用）
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: creator-logs
           path: |
             C:/Users/runneradmin/.CocosCreator/logs/*.log
+            ${{ github.workspace }}/buildscreen_*.png
           if-no-files-found: ignore
