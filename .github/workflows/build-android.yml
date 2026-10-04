@@ -16,9 +16,9 @@ on:
         required: true
         default: '21.4.7075529'
       api_level:
-        description: 'Android API Level'
+        description: 'Android API Level（如 android-28）'
         required: true
-        default: '28'
+        default: 'android-28'
 
 env:
   CREATOR_URL: 'https://download.cocos.com/CocosCreator/v2.4.15/CocosCreator_v2.4.15_20250328_win.zip'
@@ -79,7 +79,7 @@ jobs:
           }
           Write-Host "sdkmanager: $sdkmgr"
           cmd /c "echo y| `"$sdkmgr`" --sdk_root=`"$sdk`" --licenses >NUL"
-          & $sdkmgr --sdk_root="$sdk" --install "platforms;android-${{ inputs.api_level }}" "build-tools;28.0.3" "ndk;${{ inputs.ndk_version }}"
+          & $sdkmgr --sdk_root="$sdk" --install "platforms;${{ inputs.api_level }}" "build-tools;28.0.3" "ndk;${{ inputs.ndk_version }}"
           if ($LASTEXITCODE -ne 0) { Write-Error "sdkmanager install failed: $LASTEXITCODE" }
           $ndk = "$sdk\ndk\${{ inputs.ndk_version }}"
           if (-not (Test-Path "$ndk\ndk-build.cmd")) { Write-Error "NDK 未安装成功: $ndk" }
