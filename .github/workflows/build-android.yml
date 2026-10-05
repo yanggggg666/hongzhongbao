@@ -185,6 +185,9 @@ jobs:
               Copy-Item $p (Join-Path $dest $destName) -Force -ErrorAction SilentlyContinue
             }
           }
+          Get-ChildItem "$proj\jni\*.mk" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName (Join-Path $dest ("proj_jni_" + $_.Name)) -ErrorAction SilentlyContinue }
+          Copy-Item "$proj\settings.gradle" (Join-Path $dest "proj_settings.gradle") -Force -ErrorAction SilentlyContinue
+          Copy-Item "$proj\build.gradle" (Join-Path $dest "proj_build.gradle") -Force -ErrorAction SilentlyContinue
           Write-Host (Get-ChildItem $dest | ForEach-Object Name)
 
       - name: 归档诊断产物
