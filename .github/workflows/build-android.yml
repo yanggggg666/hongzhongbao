@@ -176,6 +176,15 @@ jobs:
           New-Item -ItemType Directory -Force $dest | Out-Null
           Copy-Item "C:/Users/runneradmin/.CocosCreator/logs/*" $dest -Force -ErrorAction SilentlyContinue
           Copy-Item "$PWD\buildscreen_*.png" $dest -Force -ErrorAction SilentlyContinue
+          Copy-Item "C:\CocosCreator\resources\cocos2d-x\cocos\Android.mk" $dest -Force -ErrorAction SilentlyContinue
+          Copy-Item "C:\CocosCreator\resources\cocos2d-x\cocos\cocos2d-lite\Android.mk" $dest -Force -ErrorAction SilentlyContinue
+          $proj = "$PWD\client\build\jsb-link\frameworks\runtime-src\proj.android-studio"
+          foreach ($p in @("$proj\app\jni\Android.mk","$proj\app\jni\Application.mk","$proj\app\build.gradle","$proj\gradle.properties","$proj\local.properties","$proj\instantapp\jni\Android.mk","$proj\gradle\wrapper\gradle-wrapper.properties")) {
+            if (Test-Path $p) {
+              $destName = ($p.Substring($proj.Length+1) -replace '[^\w.-]','_')
+              Copy-Item $p (Join-Path $dest $destName) -Force -ErrorAction SilentlyContinue
+            }
+          }
           Write-Host (Get-ChildItem $dest | ForEach-Object Name)
 
       - name: 归档诊断产物
